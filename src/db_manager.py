@@ -24,6 +24,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator, Optional, Sequence
 
 import pandas as pd
+import pymysql
 import streamlit as st
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, Engine, URL
