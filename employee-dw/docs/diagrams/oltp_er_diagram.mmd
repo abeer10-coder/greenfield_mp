@@ -1,0 +1,53 @@
+%% OLTP ER diagram. Renders on GitHub; in draw.io use Arrange > Insert > Advanced > Mermaid to edit it.
+erDiagram
+    DEPARTMENTS ||--o{ EMPLOYEES : "current department"
+    JOB_ROLES   ||--o{ EMPLOYEES : "current role"
+    EMPLOYEES   ||--o{ EMPLOYEE_JOB_HISTORY : "has versions"
+    DEPARTMENTS ||--o{ EMPLOYEE_JOB_HISTORY : "in"
+    JOB_ROLES   ||--o{ EMPLOYEE_JOB_HISTORY : "as"
+    DEPARTMENTS ||--o{ PROJECTS : owns
+    EMPLOYEES   ||--o{ PROJECT_ASSIGNMENTS : "works on"
+    PROJECTS    ||--o{ PROJECT_ASSIGNMENTS : "staffed by"
+    EMPLOYEES   ||--o{ PERFORMANCE_REVIEWS : receives
+    PROJECTS    |o--o{ PERFORMANCE_REVIEWS : "reviewed on"
+
+    DEPARTMENTS { int department_id PK
+        string department_name UK }
+    JOB_ROLES { int job_role_id PK
+        string job_title UK }
+    EMPLOYEES { int employee_id PK
+        string first_name
+        string last_name
+        string email UK
+        date hire_date
+        int department_id FK
+        int job_role_id FK
+        int job_level
+        int monthly_income
+        bool attrition }
+    EMPLOYEE_JOB_HISTORY { int history_id PK
+        int employee_id FK
+        int department_id FK
+        int job_role_id FK
+        int job_level
+        int monthly_income
+        date effective_start
+        date effective_end
+        string change_reason }
+    PROJECTS { int project_id PK
+        string project_name UK
+        int department_id FK
+        string status
+        string priority
+        decimal budget }
+    PROJECT_ASSIGNMENTS { int assignment_id PK
+        int employee_id FK
+        int project_id FK
+        string role_on_project
+        int allocation_pct }
+    PERFORMANCE_REVIEWS { int review_id PK
+        int employee_id FK
+        int project_id FK
+        date review_date
+        int performance_rating
+        decimal review_score }
