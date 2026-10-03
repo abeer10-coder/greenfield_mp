@@ -24,6 +24,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator, Optional, Sequence
 
 import pandas as pd
+import streamlit as st
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, Engine, URL
 from sqlalchemy.exc import SQLAlchemyError
@@ -39,71 +40,75 @@ OLTP_DB = "employee_oltp"
 DW_DB = "employee_dw"
 
 
-class DatabaseError(Exception):
-    """Raised when MySQL says no. The message is written for humans."""
-
-
-def _load_settings() -> dict[str, Any]:
-    settings: dict[str, Any] = {
-        "host": os.getenv("DB_HOST", "127.0.0.1"),
-        "port": os.getenv("DB_PORT", "3306"),
-        "user": os.getenv("DB_USER", "root"),
-        "password": os.getenv("DB_PASSWORD", ""),
-        "ssl_ca": os.getenv("DB_SSL_CA", ""),
-    }
-    try:                                # Streamlit Cloud / local secrets.toml
-        import streamlit as st
-        if "mysql" in st.secrets:
-            settings.update(dict(st.secrets["mysql"]))
-    except Exception:                   # no secrets file, or not running in Streamlit
+def _get_credential(key: str, default: str = "") -> str:
+    """Check Streamlit Cloud Secrets first, then fallback to local os.environ."""
+    try:
+        if hasattr(st, "secrets") and key in st.secrets:
+            return str(st.secrets[key])
+    except Exception:
         pass
-    settings["port"] = int(settings["port"])
-    return settings
+    return str(os.getenv(key, default))
+
+
+class DatabaseError(Exception):
+    """Custom exception wrapper for database operations."""
+    pass
 
 
 class DatabaseConnection:
-    """Thread-safe Singleton that hands out SQLAlchemy engines per schema."""
+    """Manages connections to MySQL/Aiven database."""
 
-    _instance: Optional["DatabaseConnection"] = None
-    _lock = threading.Lock()
+    def __init__(self):
+        # Checks Streamlit Secrets / .env with Aiven connection fallbacks
+        self.host = _get_credential(
+            "MYSQL_HOST",
+            _get_credential("DB_HOST", "mysql-350b651f-greenfieldminiproject.h.aivencloud.com")
+        )
+        self.port = int(
+            _get_credential(
+                "MYSQL_PORT",
+                _get_credential("DB_PORT", "10999")
+            )
+        )
+        self.user = _get_credential(
+            "MYSQL_USER",
+            _get_credential("DB_USER", "avnadmin")
+        )
+        self.password = _get_credential(
+            "MYSQL_PASSWORD",
+            _get_credential("DB_PASSWORD", "AVNS_sGB23mznLiJ5mbGWO2_")
+        )
+        self.database = _get_credential(
+            "MYSQL_DATABASE",
+            _get_credential("DB_NAME", "defaultdb")
+        )
 
-    def __new__(cls) -> "DatabaseConnection":
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:           # double-checked locking
-                    instance = super().__new__(cls)
-                    instance._settings = _load_settings()
-                    instance._engines = {}
-                    instance._engine_lock = threading.Lock()
-                    cls._instance = instance
-        return cls._instance
-
-    # ------------------------------------------------------------ engines
-    def engine(self, schema: Optional[str] = None) -> Engine:
-        key = schema or ""
-        with self._engine_lock:
-            if key not in self._engines:
-                s = self._settings
-                url = URL.create("mysql+pymysql", username=s["user"], password=s["password"],
-                                 host=s["host"], port=s["port"], database=schema)
-                connect_args = {"ssl": {"ca": s["ssl_ca"]}} if s.get("ssl_ca") else {}
-                self._engines[key] = create_engine(
-                    url, pool_pre_ping=True, pool_recycle=1800,
-                    pool_size=5, max_overflow=5, connect_args=connect_args)
-            return self._engines[key]
-
-    @staticmethod
-    def _friendly(exc: Exception) -> str:
-        original = getattr(exc, "orig", None)
-        return str(original or exc)
-
-    # ------------------------------------------------------------ queries
-    def ping(self) -> bool:
+    def get_connection(self):
+        """Creates a PyMySQL connection with TLS/SSL enabled for Aiven."""
         try:
-            with self.engine().connect() as conn:
-                conn.execute(text("SELECT 1"))
+            return pymysql.connect(
+                host=self.host,
+                port=self.port,
+                user=self.user,
+                password=self.password,
+                database=self.database,
+                cursorclass=pymysql.cursors.DictCursor,
+                ssl={"check_hostname": False},  # Required for Aiven SSL mode
+                connect_timeout=10,
+            )
+        except Exception as e:
+            raise DatabaseError(f"Failed to connect to MySQL: {e}") from e
+
+    def ping(self) -> bool:
+        """Verifies if the database server is reachable."""
+        try:
+            conn = self.get_connection()
+            conn.ping(reconnect=True)
+            conn.close()
             return True
-        except SQLAlchemyError:
+        except Exception as err:
+            # Print exact failure details directly on the Streamlit screen for debugging
+            st.warning(f"Connection diagnostic error: {err}")
             return False
 
     def fetch_df(self, sql: str, params: Optional[dict] = None,
