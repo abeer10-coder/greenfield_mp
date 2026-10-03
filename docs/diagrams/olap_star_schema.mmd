@@ -1,0 +1,43 @@
+%% Star schema. Renders on GitHub; in draw.io use Arrange > Insert > Advanced > Mermaid to edit it.
+erDiagram
+    DIM_EMPLOYEE   ||--o{ FACT_PERFORMANCE_REVIEWS : employee_key
+    DIM_DEPARTMENT ||--o{ FACT_PERFORMANCE_REVIEWS : department_key
+    DIM_PROJECT    ||--o{ FACT_PERFORMANCE_REVIEWS : project_key
+    DIM_DATE       ||--o{ FACT_PERFORMANCE_REVIEWS : date_key
+
+    FACT_PERFORMANCE_REVIEWS { bigint review_key PK
+        int review_id "degenerate dimension"
+        int employee_key FK
+        int department_key FK
+        int project_key FK
+        int date_key FK
+        int performance_rating
+        int job_satisfaction
+        int environment_satisfaction
+        int work_life_balance
+        int percent_salary_hike
+        decimal review_score }
+    DIM_EMPLOYEE { int employee_key PK "surrogate"
+        int employee_id "business key"
+        string full_name
+        string department_name "SCD2"
+        string job_role "SCD2"
+        int job_level "SCD2"
+        int monthly_income "SCD2"
+        date start_date
+        date end_date
+        bool is_current }
+    DIM_DEPARTMENT { int department_key PK
+        int department_id
+        string department_name }
+    DIM_PROJECT { int project_key PK
+        int project_id
+        string project_name
+        string status
+        string priority }
+    DIM_DATE { int date_key PK
+        date full_date
+        int month_number
+        int quarter_number
+        int year_number
+        bool is_weekend }
